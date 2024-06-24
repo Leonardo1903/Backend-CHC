@@ -1,0 +1,11 @@
+{
+  "name": "backend-chc",
+  "version": "1.0.0",
+  "description": "This repo contains projects made in Chai aur Backend Course",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node index.js"
+  },
+  "author": "Leonardo Fernandes",
+  "license": "ISC"
+}
