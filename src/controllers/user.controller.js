@@ -215,6 +215,16 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
   }
 });
 
+export const getUserProfile = asyncHandler(async (req, res) => {
+  // User get profile logic:-
+  // Get user details from frontend
+  // Check if user exists: email
+  // Send response
+  return res
+    .status(200)
+    .json(new apiResponse(200, req.user, "Current user fetched Succesfully"));
+});
+
 export const changePassword = asyncHandler(async (req, res) => {
   // User change password logic:-
   // Get user details from frontend
@@ -232,13 +242,10 @@ export const changePassword = asyncHandler(async (req, res) => {
 
   if (!isPasswordCorrect) {
     throw new apiError(401, "Invalid old password");
+  }
 
-    if (oldPassword === newPassword) {
-      throw new apiError(
-        400,
-        "New password cannot be the same as old password"
-      );
-    }
+  if (oldPassword === newPassword) {
+    throw new apiError(400, "New password cannot be the same as old password");
   }
 
   user.password = newPassword;
@@ -247,23 +254,6 @@ export const changePassword = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new apiResponse(200, "Password changed successfully"));
-});
-
-export const getUserProfile = asyncHandler(async (req, res) => {
-  // User get profile logic:-
-  // Get user details from frontend
-  // Check if user exists: email
-  // Send response
-
-  const user = await User.findById(req.user._id).select("-password");
-
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
-  return res
-    .status(200)
-    .json(new apiResponse(200, "User profile fetched successfully", user));
 });
 
 export const updateUserProfile = asyncHandler(async (req, res) => {
@@ -276,35 +266,21 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
 
   const { fullName, email, username } = req.body;
 
-  if ([fullName, email, username].some((field) => field?.trim() === "")) {
-    throw new apiError(400, "All fields are required");
+  if (!(fullName || email || username)) {
+    throw new apiError(400, "please provide fullname or email");
   }
 
-  const user = await User.findById(req.user._id);
-
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
-  user.fullName = fullName;
-  user.email = email;
-  user.username = username;
-
-  await user.save({ validateBeforeSave: false });
-
-  const updatedUser = await User.findByIdAndUpdate(
-    user._id,
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
     {
       $set: { fullName, email, username },
     },
     { new: true }
-  ).select("-password");
+  ).select("-password -refreshToken");
 
   return res
     .status(200)
-    .json(
-      new apiResponse(200, "User profile updated successfully", updatedUser)
-    );
+    .json(new apiResponse(200, user, "Details updated Successfully"));
 });
 
 export const updateAvatar = asyncHandler(async (req, res) => {
