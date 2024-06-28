@@ -174,10 +174,10 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
   // Send response
 
   const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
+    req.cookies.refreshToken || req.header.refreshToken;
 
   if (!incomingRefreshToken) {
-    throw new apiError(401, "Unauthorized request");
+    throw new apiError(401, "Unauthorized Access");
   }
 
   try {
@@ -187,12 +187,11 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     );
 
     const user = await User.findById(decodedToken?._id);
-
     if (!user) {
-      throw new apiError(404, "Invalid Refresh Token");
+      throw new apiError(401, "Invalid Refresh Token");
     }
     if (incomingRefreshToken !== user?.refreshToken) {
-      throw new apiError(401, "Unauthorized request");
+      throw new apiError(401, "Refresh Token is expired or Used");
     }
 
     const options = {
@@ -200,22 +199,25 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
       secure: true,
     };
 
-    const { accessToken, newRefreshToken } =
+    const { accessToken, refreshToken: newRefreshToken } =
       await generateAccessAndRefreshToken(user._id);
 
     return res
       .status(200)
       .cookie("accessToken", accessToken, options)
-      .cookie("refreshToken", refreshToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
       .json(
         new apiResponse(
           200,
-          { accessToken, refreshToken: newRefreshToken },
-          "Access token refreshed successfully"
+          {
+            accessToken,
+            refreshToken: newRefreshToken,
+          },
+          "Token refreshed successfully"
         )
       );
   } catch (error) {
-    throw new apiError(401, "Unauthorized request");
+    throw new apiError(400, error?.message || "Invalid Access");
   }
 });
 
