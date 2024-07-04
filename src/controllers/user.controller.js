@@ -37,12 +37,6 @@ export const registerUser = asyncHandler(async (req, res) => {
 
   const { fullName, email, username, password } = req.body;
 
-  // if (
-  //   [fullName, email, username, password].some((field) => field?.trim() === "")
-  // ) {
-  //   throw new apiError(400, "All fields are required");
-  // }
-
   //checking for empty inputs
   if (username === " ") {
     throw new apiError(500, "Username is required");
@@ -56,6 +50,13 @@ export const registerUser = asyncHandler(async (req, res) => {
   if (password === " ") {
     throw new apiError(500, "Password is required");
   }
+
+  // Another way to check for empty inputs
+  // if (
+  //   [fullName, email, username, password].some((field) => field?.trim() === "")
+  // ) {
+  //   throw new apiError(400, "All fields are required");
+  // }
 
   //checking for valid email adress
   const emailRegex = /^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[a-zA-Z]{2,7}$/;
