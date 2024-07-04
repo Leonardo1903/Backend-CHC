@@ -37,12 +37,43 @@ export const registerUser = asyncHandler(async (req, res) => {
 
   const { fullName, email, username, password } = req.body;
 
-  if (
-    [fullName, email, username, password].some((field) => field?.trim() === "")
-  ) {
-    throw new apiError(400, "All fields are required");
+  // if (
+  //   [fullName, email, username, password].some((field) => field?.trim() === "")
+  // ) {
+  //   throw new apiError(400, "All fields are required");
+  // }
+
+  //checking for empty inputs
+  if (username === " ") {
+    throw new apiError(500, "Username is required");
+  }
+  if (fullName === " ") {
+    throw new apiError(500, "Fullname is required");
+  }
+  if (email === " ") {
+    throw new apiError(500, "Email is required");
+  }
+  if (password === " ") {
+    throw new apiError(500, "Password is required");
   }
 
+  //checking for valid email adress
+  const emailRegex = /^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[a-zA-Z]{2,7}$/;
+  if (!emailRegex.test(email)) {
+    throw new apiError(500, "Invalid email address");
+  }
+
+  // checking for valid password
+  const passwordRegex =
+    /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/gm;
+  if (!passwordRegex.test(password)) {
+    throw new apiError(
+      500,
+      "Password should contain Uppercase, lowercase, numbers, special charecterrs and should be at least 8 char long"
+    );
+  }
+
+  //checking if user already exists
   const ExistingUser = await User.findOne({
     $or: [{ email }, { username }],
   });
