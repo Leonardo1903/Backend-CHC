@@ -54,7 +54,7 @@ export const getUserTweets = asyncHandler(async (req, res) => {
   // find and authenticate user by req.user?._id
   const user = await User.findById(req.user?._id);
   if (!user) {
-    throw new ApiError(400, "User not found");
+    throw new apiError(400, "User not found");
   }
 
   // Create a tweets Aggregation pipeline
