@@ -39,7 +39,7 @@ export const toggleSubscription = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(
-      new ApiResponse(
+      new apiResponse(
         200,
         response,
         isSubscribed === null
