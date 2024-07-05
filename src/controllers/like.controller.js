@@ -9,8 +9,9 @@ import { Tweet } from "../models/tweet.models.js";
 import { User } from "../models/user.models.js";
 
 export const toggleVideoLike = asyncHandler(async (req, res) => {
-  const { videoId } = req.params;
   //TODO: toggle like on video
+  const { videoId } = req.params;
+
   // check if videoId is valid ObjectId
   if (!isValidObjectId(videoId)) {
     throw new apiError(400, "Invalid Object Id");
@@ -46,8 +47,8 @@ export const toggleVideoLike = asyncHandler(async (req, res) => {
 });
 
 export const toggleCommentLike = asyncHandler(async (req, res) => {
-  const { commentId } = req.params;
   //TODO: toggle like on comment
+  const { commentId } = req.params;
 
   // check if commentId is valid ObjectId
   if (!isValidObjectId(commentId)) {
@@ -84,8 +85,8 @@ export const toggleCommentLike = asyncHandler(async (req, res) => {
 });
 
 export const toggleTweetLike = asyncHandler(async (req, res) => {
-  const { tweetId } = req.params;
   //TODO: toggle like on tweet
+  const { tweetId } = req.params;
 
   // check if tweetId is valid ObjectId
   if (!isValidObjectId(tweetId)) {
