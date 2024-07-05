@@ -37,4 +37,15 @@ const deleteFromCloudinary = async (fileToDelete) => {
   }
 };
 
-export { uploadOnCloudinary, deleteFromCloudinary };
+const deleteVideoFromCloudinary = async (fileToDelete) => {
+  try {
+    const response = await cloudinary.uploader.destroy(fileToDelete, {
+      resource_type: "video",
+    });
+    return response;
+  } catch (error) {
+    return null;
+  }
+};
+
+export { uploadOnCloudinary, deleteFromCloudinary, deleteVideoFromCloudinary };
