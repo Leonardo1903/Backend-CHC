@@ -322,7 +322,8 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
 });
 
 export const updateAvatar = asyncHandler(async (req, res) => {
-  const avatarLocalPath = req.files.avatar[0].path;
+  const avatarUrl = req.user?.avatar;
+  const avatarLocalPath = req.file?.path;
 
   if (!avatarLocalPath) {
     throw new apiError(400, "Avatar is required");
@@ -334,10 +335,11 @@ export const updateAvatar = asyncHandler(async (req, res) => {
     throw new apiError(400, "Error uploading avatar");
   }
 
-  const oldAvatar = avatarLocalPath.split("/");
-  const oldAvatarId = oldAvatar[oldAvatar.length - 1].split(".")[0];
-  const deleteAvatar = await deleteFromCloudinary(oldAvatarId);
-  console.log(deleteAvatar);
+  const oldAvatarUrl = avatarUrl.split("/");
+  const oldAvatarId = oldAvatarUrl[oldAvatarUrl.length - 1].split(".")[0];
+  // console.log(oldAvatarUrl[oldAvatarUrl.length - 1].split(".")[0]);
+  const deleteImage = await deleteFromCloudinary(oldAvatarId);
+  // console.log(deleteImage);
 
   const user = await User.findByIdAndUpdate(
     req.user._id,
@@ -353,7 +355,9 @@ export const updateAvatar = asyncHandler(async (req, res) => {
 });
 
 export const updateCoverImage = asyncHandler(async (req, res) => {
-  const coverImageLocalPath = req.files.avatar[0].path;
+  const coverimageUrl = req.user?.coverimage;
+
+  const coverImageLocalPath = req.file?.path;
 
   if (!coverImageLocalPath) {
     throw new apiError(400, "Cover Image is required");
@@ -365,10 +369,12 @@ export const updateCoverImage = asyncHandler(async (req, res) => {
     throw new apiError(400, "Error uploading cover image");
   }
 
-  const oldCoverImage = coverImageLocalPath.split("/");
-  const oldCoverImageId = oldCoverImage[oldCoverImage.length - 1].split(".")[0];
-  const deleteCoverImage = await deleteFromCloudinary(oldCoverImageId);
-  console.log(deleteCoverImage);
+  const oldCoverImageUrl = coverimageUrl.split("/");
+  const oldCoverImageId =
+    oldCoverImageUrl[oldCoverImageUrl.length - 1].split(".")[0];
+  // console.log(oldCoverImageId);
+  const deleteImage = await deleteFromCloudinary(oldCoverImageId);
+  // console.log(deleteImage);
 
   const user = await User.findByIdAndUpdate(
     req.user._id,
