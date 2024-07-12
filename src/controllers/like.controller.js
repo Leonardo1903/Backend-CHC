@@ -6,7 +6,6 @@ import { Like } from "../models/like.models.js";
 import { Video } from "../models/video.models.js";
 import { Comment } from "../models/comment.models.js";
 import { Tweet } from "../models/tweet.models.js";
-import { User } from "../models/user.models.js";
 
 export const toggleVideoLike = asyncHandler(async (req, res) => {
   //TODO: toggle like on video
@@ -125,11 +124,6 @@ export const toggleTweetLike = asyncHandler(async (req, res) => {
 export const getLikedVideos = asyncHandler(async (req, res) => {
   //TODO: get all liked videos
 
-  const user = await User.findById(req.user?._id);
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
   const likedVideos = await Like.aggregate([
     {
       $match: {
@@ -141,49 +135,50 @@ export const getLikedVideos = asyncHandler(async (req, res) => {
         from: "videos",
         localField: "video",
         foreignField: "_id",
-        as: "video",
+        as: "likedVideo",
         pipeline: [
           {
             $lookup: {
               from: "users",
               localField: "owner",
               foreignField: "_id",
-              as: "owner",
-              pipeline: [
-                {
-                  $project: {
-                    username: 1,
-                    fullname: 1,
-                    avatar: 1,
-                  },
-                },
-              ],
+              as: "ownerDetails",
             },
           },
           {
-            $addFields: {
-              owner: {
-                $first: "$owner",
-              },
-            },
-          },
-          {
-            $project: {
-              title: 1,
-              description: 1,
-              thumbnail: "$thumbnail.url",
-              owner: 1,
-            },
+            $unwind: "$ownerDetails",
           },
         ],
       },
     },
     {
-      $unwind: "$video",
+      $unwind: "$likedVideo",
     },
     {
-      $replaceRoot: {
-        newRoot: "$video",
+      $sort: {
+        createdAt: -1,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        likedVideo: {
+          _id: 1,
+          "videoFile.url": 1,
+          "thumbnail.url": 1,
+          owner: 1,
+          title: 1,
+          description: 1,
+          views: 1,
+          duration: 1,
+          createdAt: 1,
+          isPublished: 1,
+          ownerDetails: {
+            username: 1,
+            fullName: 1,
+            "avatar.url": 1,
+          },
+        },
       },
     },
   ]);

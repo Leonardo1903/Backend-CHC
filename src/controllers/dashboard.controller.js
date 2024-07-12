@@ -2,7 +2,6 @@ import asyncHandler from "../utils/asyncHandler.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
 import { Video } from "../models/video.models.js";
-import { User } from "../models/user.models.js";
 import mongoose from "mongoose";
 
 export const getChannelStats = asyncHandler(async (req, res) => {
@@ -14,137 +13,67 @@ export const getChannelStats = asyncHandler(async (req, res) => {
   }
 
   // get channel stats
-  const channelStats = await User.aggregate([
+  const totalSubscribers = await Subscription.aggregate([
     {
       $match: {
-        user: mongoose.Types.ObjectId(user),
+        channel: new mongoose.Types.ObjectId(userId),
       },
     },
     {
-      $lookup: {
-        from: "videos",
-        localField: "_id",
-        foreignField: "owner",
-        as: "TotalVideos",
-        pipeline: [
-          {
-            $lookup: {
-              from: "likes",
-              localField: "_id",
-              foreignField: "video",
-              as: "VideoLikes",
-            },
-          },
-          {
-            $lookup: {
-              from: "comments",
-              localField: "_id",
-              foreignField: "video",
-              as: "VideoComments",
-            },
-          },
-          {
-            $addFields: {
-              VideoLikes: { $size: "$VideoLikes" },
-              VideoComments: { $size: "$VideoComments" },
-            },
-          },
-        ],
-      },
-    },
-    {
-      $lookup: {
-        from: "subscriptions",
-        localField: "_id",
-        foreignField: "channel",
-        as: "Subscribers",
-      },
-    },
-    {
-      $lookup: {
-        from: "subscriptions",
-        localField: "_id",
-        foreignField: "channel",
-        as: "SubscribedTo",
-      },
-    },
-    {
-      $lookup: {
-        from: "tweets",
-        localField: "_id",
-        foreignField: "tweet",
-        as: "tweets",
-        pipeline: [
-          {
-            $lookup: {
-              from: "likes",
-              localField: "_id",
-              foreignField: "tweet",
-              as: "TweetLikes",
-            },
-          },
-          {
-            $addFields: {
-              TweetLikes: { $size: "$TweetLikes" },
-            },
-          },
-        ],
-      },
-    },
-    {
-      $lookup: {
-        from: "comments",
-        localField: "_id",
-        foreignField: "owner",
-        as: "comments",
-        pipeline: [
-          {
-            $lookup: {
-              from: "likes",
-              localField: "_id",
-              foreignField: "comment",
-              as: "CommentLikes",
-            },
-          },
-          {
-            $addFields: {
-              CommentLikes: { $size: "$CommentLikes" },
-            },
-          },
-        ],
-      },
-    },
-    {
-      $project: {
-        username: 1,
-        email: 1,
-        fullname: 1,
-        avatar: 1,
-        TotalComments: { $sum: "$TotalVideos.VideoComments" },
-        TotalViews: { $sum: "$TotalVideos.views" },
-        TotalVideos: { $size: "$TotalVideos" },
-        Subscribers: { $size: "$Subscribers" },
-        SubscribedTo: { $size: "$SubscribedTo" },
-        TotalTweets: { $size: "$tweets" },
-        TotalLikes: {
-          videoLikes: { $sum: "$TotalVideos.VideoLikes" },
-          tweetLikes: { $sum: "$tweets.TweetLikes" },
-          commentLikes: { $sum: "$comments.CommentLikes" },
-          total: {
-            $add: [
-              "$TotalVideos.VideoLikes",
-              "$tweets.TweetLikes",
-              "$comments.CommentLikes",
-            ],
-          },
+      $group: {
+        _id: null,
+        subscribersCount: {
+          $sum: 1,
         },
       },
     },
   ]);
 
-  if (!channelStats) {
-    throw new apiError(404, "Channel not found");
-  }
+  const video = await Video.aggregate([
+    {
+      $match: {
+        owner: new mongoose.Types.ObjectId(userId),
+      },
+    },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "video",
+        as: "likes",
+      },
+    },
+    {
+      $project: {
+        totalLikes: {
+          $size: "$likes",
+        },
+        totalViews: "$views",
+        totalVideos: 1,
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalLikes: {
+          $sum: "$totalLikes",
+        },
+        totalViews: {
+          $sum: "$totalViews",
+        },
+        totalVideos: {
+          $sum: 1,
+        },
+      },
+    },
+  ]);
+
+  const channelStats = {
+    totalSubscribers: totalSubscribers[0]?.subscribersCount || 0,
+    totalLikes: video[0]?.totalLikes || 0,
+    totalViews: video[0]?.totalViews || 0,
+    totalVideos: video[0]?.totalVideos || 0,
+  };
 
   // return response
   return res
@@ -163,18 +92,46 @@ export const getChannelVideos = asyncHandler(async (req, res) => {
   const videos = await Video.aggregate([
     {
       $match: {
-        owner: mongoose.Types.ObjectId(user),
+        owner: new mongoose.Types.ObjectId(userId),
+      },
+    },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "video",
+        as: "likes",
+      },
+    },
+    {
+      $addFields: {
+        createdAt: {
+          $dateToParts: { date: "$createdAt" },
+        },
+        likesCount: {
+          $size: "$likes",
+        },
+      },
+    },
+    {
+      $sort: {
+        createdAt: -1,
       },
     },
     {
       $project: {
+        _id: 1,
+        "videoFile.url": 1,
+        "thumbnail.url": 1,
         title: 1,
         description: 1,
-        thumbnail: "$thumbnail.url",
-        videoFile: "$videoFile.url",
-        views: 1,
-        duration: 1,
+        createdAt: {
+          year: 1,
+          month: 1,
+          day: 1,
+        },
         isPublished: 1,
+        likesCount: 1,
       },
     },
   ]);

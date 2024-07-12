@@ -10,33 +10,25 @@ export const createPlaylist = asyncHandler(async (req, res) => {
   //TODO: create playlist
   const { name, description } = req.body;
   // check if name and description is provided
-  if (!(name && description) || name === "" || description === "") {
-    throw new apiError(400, "Playlist name and decription is required");
-  }
-
-  // check if user is authenticated
-  const user = User.findById(req.user._id);
-  if (!user) {
-    throw new apiError(404, "User not found");
+  if (!name || !description) {
+    throw new apiError(400, "name and description both are required");
   }
 
   // create playlist
-  const createdPlaylist = await Playlist.create({
+  const playlist = await Playlist.create({
     name,
     description,
     owner: req.user?._id,
   });
   // check if playlist was created
-  if (!createdPlaylist) {
+  if (!playlist) {
     throw new apiError(500, "Playlist could not be created");
   }
 
   // return response
   return res
     .status(200)
-    .json(
-      new apiResponse(200, createdPlaylist, "Playlist created successfully")
-    );
+    .json(new apiResponse(200, playlist, "Playlist created successfully"));
 });
 
 export const getUserPlaylists = asyncHandler(async (req, res) => {
@@ -48,12 +40,6 @@ export const getUserPlaylists = asyncHandler(async (req, res) => {
     throw new apiError(400, "Invalid user id");
   }
 
-  // check if user exists
-  const user = await User.findById(userId);
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
   const playlists = await Playlist.aggregate([
     {
       $match: {
@@ -63,58 +49,29 @@ export const getUserPlaylists = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: "videos",
-        localField: "video",
+        localField: "videos",
         foreignField: "_id",
-        as: "video",
-        pipeline: [
-          {
-            $lookup: {
-              from: "users",
-              localField: "owner",
-              foreignField: "_id",
-              as: "VideoOwner",
-              pipeline: [
-                {
-                  $project: {
-                    username: 1,
-                    avatar: 1,
-                    fullname: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $addFields: {
-              VideoOwner: {
-                $first: "$VideoOwner",
-              },
-            },
-          },
-          {
-            $project: {
-              thumbnail: "$thumbnail.url",
-              title: 1,
-              videoFile: "$videoFile.url",
-              duration: 1,
-              views: 1,
-              description: 1,
-              videoOwner: "$VideoOwner",
-            },
-          },
-        ],
-      },
-    },
-    {
-      $addFields: {
-        video: "$video",
+        as: "videos",
       },
     },
     {
       $addFields: {
         totalVideos: {
-          $size: "$video",
+          $size: "$videos",
         },
+        totalViews: {
+          $sum: "$videos.views",
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        name: 1,
+        description: 1,
+        totalVideos: 1,
+        totalViews: 1,
+        updatedAt: 1,
       },
     },
   ]);
@@ -146,12 +103,12 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
   }
 
   // check if playlist exists
-  const validPlaylist = await Playlist.findById(playlistId);
-  if (!validPlaylist) {
+  const playlist = await Playlist.findById(playlistId);
+  if (!playlist) {
     throw new apiError(404, "playlist not found");
   }
 
-  const playlist = await Playlist.aggregate([
+  const playlistVideos = await Playlist.aggregate([
     {
       $match: {
         _id: new mongoose.Types.ObjectId(playlistId),
@@ -160,58 +117,14 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: "videos",
-        localField: "video",
+        localField: "videos",
         foreignField: "_id",
-        as: "video",
-        pipeline: [
-          {
-            $lookup: {
-              from: "users",
-              localField: "owner",
-              foreignField: "_id",
-              as: "VideoOwner",
-              pipeline: [
-                {
-                  $project: {
-                    username: 1,
-                    avatar: 1,
-                    fullname: 1,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $addFields: {
-              VideoOwner: {
-                $first: "$VideoOwner",
-              },
-            },
-          },
-          {
-            $project: {
-              thumbnail: "$thumbnail.url",
-              title: 1,
-              videoFile: "$videoFile.url",
-              duration: 1,
-              views: 1,
-              description: 1,
-              videoOwner: "$VideoOwner",
-            },
-          },
-        ],
+        as: "videos",
       },
     },
     {
-      $addFields: {
-        video: "$video",
-      },
-    },
-    {
-      $addFields: {
-        totalVideos: {
-          $size: "$video",
-        },
+      $match: {
+        "videos.isPublished": true,
       },
     },
     {
@@ -219,41 +132,58 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
         from: "users",
         localField: "owner",
         foreignField: "_id",
-        as: "PlaylistOwner",
-        pipeline: [
-          {
-            $project: {
-              username: 1,
-              avatar: 1,
-              fullname: 1,
-            },
-          },
-        ],
+        as: "owner",
       },
     },
     {
       $addFields: {
-        PlaylistOwner: {
-          $first: "$PlaylistOwner",
+        totalVideos: {
+          $size: "$videos",
+        },
+        totalViews: {
+          $sum: "$videos.views",
+        },
+        owner: {
+          $first: "$owner",
         },
       },
     },
     {
-      $unset: "owner",
+      $project: {
+        name: 1,
+        description: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        totalVideos: 1,
+        totalViews: 1,
+        videos: {
+          _id: 1,
+          "videoFile.url": 1,
+          "thumbnail.url": 1,
+          title: 1,
+          description: 1,
+          duration: 1,
+          createdAt: 1,
+          views: 1,
+        },
+        owner: {
+          username: 1,
+          fullName: 1,
+          "avatar.url": 1,
+        },
+      },
     },
   ]);
 
-  // check if playlist were found
-  if (!playlist) {
+  if (!playlistVideos) {
     throw new apiError(404, "Error Fetching User Playlists");
   }
-
-  //return first value of Playlists array as response
   return res
     .status(200)
     .json(
-      new apiResponse(200, playlist[0], "User playlists retrieved successfully")
+      new apiResponse(200, playlistVideos[0], "playlist fetched successfully")
     );
+  // check if playlist were found
 });
 
 export const addVideoToPlaylist = asyncHandler(async (req, res) => {
@@ -271,12 +201,6 @@ export const addVideoToPlaylist = asyncHandler(async (req, res) => {
     throw new apiError(404, "Playlist not found");
   }
 
-  // check if user is authenticated
-  const user = await User.findById(req.user?._id);
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
   // check if video exists
   const video = await Video.findById(videoId);
   if (!video) {
@@ -284,8 +208,11 @@ export const addVideoToPlaylist = asyncHandler(async (req, res) => {
   }
 
   // check if user is the owner of the playlist
-  if (user._id.toString() !== playlist.owner.toString()) {
-    throw new apiError(403, "Unauthorized access");
+  if (
+    (playlist.owner?.toString() && video.owner.toString()) !==
+    req.user?._id.toString()
+  ) {
+    throw new apiError(400, "only owner can add video to thier playlist");
   }
 
   // check if video is already in playlist
@@ -294,19 +221,28 @@ export const addVideoToPlaylist = asyncHandler(async (req, res) => {
   }
 
   // add video to playlist
-  const videoAdd = await Playlist.findByIdAndUpdate(
-    playlistId,
+  const updatedPlaylist = await Playlist.findByIdAndUpdate(
+    playlist?._id,
     {
-      $push: { video: videoId },
+      $addToSet: {
+        videos: videoId,
+      },
     },
     { new: true }
   );
 
-  // return response
+  if (!updatedPlaylist) {
+    throw new apiError(400, "failed to add video to playlist please try again");
+  }
+
   return res
     .status(200)
     .json(
-      new apiResponse(200, videoAdd, "Video added to playlist successfully")
+      new apiResponse(
+        200,
+        updatedPlaylist,
+        "Added video to playlist successfully"
+      )
     );
 });
 
@@ -331,18 +267,12 @@ export const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
     throw new apiError(404, "Video not found");
   }
 
-  // check if user is authenticated
-  const user = await User.findById(req.user._id);
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
   // check if user is authorized to remove video from playlist
-  if (playlist?.owner.toString() !== user._id.toString()) {
-    throw new apiError(
-      403,
-      "Unauthorized access, you are not allowed to perform this action"
-    );
+  if (
+    (playlist.owner?.toString() && video.owner.toString()) !==
+    req.user?._id.toString()
+  ) {
+    throw new apiError(404, "only owner can remove video from thier playlist");
   }
 
   // check if video is in playlist
@@ -351,21 +281,25 @@ export const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
   }
 
   // remove video from playlist
-  const videoRemove = await Playlist.findByIdAndUpdate(
+  const updatedPlaylist = await Playlist.findByIdAndUpdate(
     playlistId,
     {
-      $pull: { video: videoId },
+      $pull: {
+        videos: videoId,
+      },
     },
     { new: true }
   );
-  if (!videoRemove) {
-    throw new apiError(500, "Error removing video from playlist");
-  }
 
-  // return response
   return res
     .status(200)
-    .json(new apiResponse(200, [], "video Removed from playlist successfully"));
+    .json(
+      new apiResponse(
+        200,
+        updatedPlaylist,
+        "Removed video from playlist successfully"
+      )
+    );
 });
 
 export const deletePlaylist = asyncHandler(async (req, res) => {
@@ -381,12 +315,6 @@ export const deletePlaylist = asyncHandler(async (req, res) => {
   const playlist = await Playlist.findById(playlistId);
   if (!playlist) {
     throw new apiError(404, "Playlist not found");
-  }
-
-  // check if user is authenticated
-  const user = await User.findById(req.user?._id);
-  if (!user) {
-    throw new apiError(404, "User not found");
   }
 
   // check if user is authorized to delete playlist
@@ -419,8 +347,12 @@ export const updatePlaylist = asyncHandler(async (req, res) => {
   }
 
   // check if name or description are provided
-  if (!(name || description) || name === "" || description === "") {
-    throw new apiError(400, "Playlist name or description is required");
+  if (!name || !description) {
+    throw new ApiError(400, "name and description both are required");
+  }
+
+  if (!isValidObjectId(playlistId)) {
+    throw new apiError(400, "Invalid PlaylistId");
   }
 
   // check if playlist exists

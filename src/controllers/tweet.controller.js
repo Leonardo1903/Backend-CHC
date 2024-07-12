@@ -10,12 +10,6 @@ export const createTweet = asyncHandler(async (req, res) => {
   // get tweet content from req.body
   const { content } = req.body;
 
-  // check if user is authenticated
-  const user = await User.findById(req.user?._id);
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
   // check if content is provided
   if (!content || content.trim() === "") {
     throw new apiError(400, "tweet content is required");
@@ -23,8 +17,8 @@ export const createTweet = asyncHandler(async (req, res) => {
 
   // create tweet
   const tweet = await Tweet.create({
-    owner: req.user?._id,
     content,
+    owner: req.user?._id,
   });
   // check if tweet is created
   if (!tweet) {
@@ -51,14 +45,8 @@ export const getUserTweets = asyncHandler(async (req, res) => {
     throw new apiError(404, "Invalid User Id");
   }
 
-  // find and authenticate user by req.user?._id
-  const user = await User.findById(req.user?._id);
-  if (!user) {
-    throw new apiError(400, "User not found");
-  }
-
   // Create a tweets Aggregation pipeline
-  const tweetsAggregation = Tweet.aggregate([
+  const tweets = await Tweet.aggregate([
     {
       $match: {
         owner: new mongoose.Types.ObjectId(userId),
@@ -69,14 +57,27 @@ export const getUserTweets = asyncHandler(async (req, res) => {
         from: "users",
         localField: "owner",
         foreignField: "_id",
-        as: "owner",
+        as: "ownerDetails",
         pipeline: [
           {
             $project: {
-              email: 1,
               username: 1,
-              fullname: 1,
-              avatar: 1,
+              "avatar.url": 1,
+            },
+          },
+        ],
+      },
+    },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "tweet",
+        as: "likeDetails",
+        pipeline: [
+          {
+            $project: {
+              likedBy: 1,
             },
           },
         ],
@@ -84,8 +85,18 @@ export const getUserTweets = asyncHandler(async (req, res) => {
     },
     {
       $addFields: {
-        owner: {
-          $first: "$owner",
+        likesCount: {
+          $size: "$likeDetails",
+        },
+        ownerDetails: {
+          $first: "$ownerDetails",
+        },
+        isLiked: {
+          $cond: {
+            if: { $in: [req.user?._id, "$likeDetails.likedBy"] },
+            then: true,
+            else: false,
+          },
         },
       },
     },
@@ -94,31 +105,21 @@ export const getUserTweets = asyncHandler(async (req, res) => {
         createdAt: -1,
       },
     },
-  ]);
-
-  // aggregatePaginate options
-  const options = {
-    page: parseInt(page),
-    limit: parseInt(limit),
-    customLabels: {
-      totalDocs: "TweetCount",
-      docs: "Tweets",
+    {
+      $project: {
+        content: 1,
+        ownerDetails: 1,
+        likesCount: 1,
+        createdAt: 1,
+        isLiked: 1,
+      },
     },
-  };
-
-  // Tweet.aggregatePaginate for pagination
-  const tweetResult = await Tweet.aggregatePaginate(tweetsAggregation, options);
-  if (!tweetResult) {
-    throw new apiError(
-      500,
-      "some Internal error Occured while fetching Tweets"
-    );
-  }
+  ]);
 
   // return response
   return res
     .status(200)
-    .json(new apiResponse(200, tweetResult, "Tweets Fetched Sucessfully"));
+    .json(new apiResponse(200, tweets, "Tweets Fetched Sucessfully"));
 });
 
 export const updateTweet = asyncHandler(async (req, res) => {
@@ -135,20 +136,14 @@ export const updateTweet = asyncHandler(async (req, res) => {
   }
 
   // check if content is provided and is not empty
-  if (content === "") {
+  if (!content) {
     throw new apiError(400, "Tweet Content is Required");
   }
 
   // check if tweet exists in collection
-  const tweet = await Tweet.findById(tweetId, { owner: 1 });
+  const tweet = await Tweet.findById(tweetId);
   if (!tweet) {
     throw new apiError(404, "Tweet not found");
-  }
-
-  // authenticate if user exists
-  const user = await User.findById(req.user?._id, { _id: 1 });
-  if (!user) {
-    throw new apiError(404, "User not found");
   }
 
   // validate if the user is owner of this tweet
@@ -187,12 +182,6 @@ export const deleteTweet = asyncHandler(async (req, res) => {
   const tweet = await Tweet.findById(tweetId, { owner: 1 });
   if (!tweet) {
     throw new apiError(404, "Tweet not found");
-  }
-
-  // authenticate if user exists
-  const user = await User.findById(req.user?._id, { _id: 1 });
-  if (!user) {
-    throw new apiError(404, "User not found");
   }
 
   // validate if the user is owner of this tweet

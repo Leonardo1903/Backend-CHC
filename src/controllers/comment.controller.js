@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import asyncHandler from "../utils/asyncHandler.js";
 import { Comment } from "../models/comment.models.js";
 import { Video } from "../models/video.models.js";
-import { User } from "../models/user.models.js";
 import { Like } from "../models/like.models.js";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
@@ -23,27 +22,18 @@ export const getVideoComments = asyncHandler(async (req, res) => {
   }
 
   // find all comments for the video and populate owner field with username and avatar
-  const comments = Comment.aggregate([
+  const commentsAggregate = Comment.aggregate([
     {
       $match: {
-        video: mongoose.Types.ObjectId(videoId),
+        video: new mongoose.Types.ObjectId(videoId),
       },
     },
     {
       $lookup: {
         from: "users",
-        localField: "user",
+        localField: "owner",
         foreignField: "_id",
         as: "owner",
-        pipeline: [
-          {
-            $project: {
-              _id: 1,
-              username: 1,
-              avatar: 1,
-            },
-          },
-        ],
       },
     },
     {
@@ -56,13 +46,15 @@ export const getVideoComments = asyncHandler(async (req, res) => {
     },
     {
       $addFields: {
-        owner: { $arrayElemAt: ["$owner", 0] },
-        totalLikes: { $size: "$likes" },
+        likesCount: {
+          $size: "$likes",
+        },
+        owner: {
+          $first: "$owner",
+        },
         isLiked: {
           $cond: {
-            if: {
-              $in: [req.user._id, "$likes.user"],
-            },
+            if: { $in: [req.user?._id, "$likes.likedBy"] },
             then: true,
             else: false,
           },
@@ -71,7 +63,20 @@ export const getVideoComments = asyncHandler(async (req, res) => {
     },
     {
       $sort: {
+        createdAt: -1,
+      },
+    },
+    {
+      $project: {
+        content: 1,
         createdAt: 1,
+        likesCount: 1,
+        owner: {
+          username: 1,
+          fullName: 1,
+          "avatar.url": 1,
+        },
+        isLiked: 1,
       },
     },
   ]);
@@ -83,24 +88,10 @@ export const getVideoComments = asyncHandler(async (req, res) => {
   };
 
   // aggregatePaginate
-  Comment.aggregatePaginate(comments, options, (err, result) => {
-    if (err) {
-      throw new apiError(500, "Error getting comments");
-    }
-
-    // return success response
-    return res
-      .status(200)
-      .json(
-        new apiResponse(
-          200,
-          result,
-          result.totalComments === 0
-            ? "No Comments Found"
-            : "Comments fetched successfully"
-        )
-      );
-  });
+  const comments = await Comment.aggregatePaginate(commentsAggregate, options);
+  return res
+    .status(200)
+    .json(new apiResponse(200, comments, "Comments fetched successfully"));
 });
 
 export const addComment = asyncHandler(async (req, res) => {
@@ -121,21 +112,15 @@ export const addComment = asyncHandler(async (req, res) => {
     throw new apiError(404, "Video not found");
   }
 
-  // find user by id and validate its existence
-  const user = await User.findById(req.user?._id);
-  if (!user) {
-    throw new apiError(404, "User not found");
-  }
-
   // create a new comment
-  const newComment = await Comment.create({
+  const comment = await Comment.create({
     content,
     video: videoId,
-    user: req.user._id,
+    owner: req.user?._id,
   });
 
   // if comment is not created successfully throw an error
-  if (!newComment) {
+  if (!comment) {
     throw new apiError(500, "Comment not created");
   }
 
@@ -152,7 +137,7 @@ export const updateComment = asyncHandler(async (req, res) => {
 
   // get comment text from body and check if it is not empty
   const { content } = req.body;
-  if (content.trim() === "") {
+  if (!content) {
     throw new apiError(400, "Comment cannot be empty");
   }
 
