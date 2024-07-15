@@ -4,87 +4,117 @@ import apiResponse from "../utils/apiResponse.js";
 import mongoose, { isValidObjectId } from "mongoose";
 import { Video } from "../models/video.models.js";
 import { User } from "../models/user.models.js";
+import { Like } from "../models/like.models.js";
+import { Comment } from "../models/comment.models.js";
 import {
   uploadOnCloudinary,
   deleteFromCloudinary,
 } from "../utils/cloudinary.js";
 
 export const getAllVideos = asyncHandler(async (req, res) => {
+  const {
+    page = 1,
+    limit = 5,
+    query = "",
+    sortBy,
+    sortType,
+    userId,
+  } = req.query;
   //TODO: get all videos based on query, sort, pagination
-  const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query;
 
-  const pipeline = [];
-
-  if (query) {
-    pipeline.push({
-      $search: {
-        index: "search-videos",
-        text: {
-          query: query,
-          path: ["title", "description"], //search only on title, desc
-        },
-      },
-    });
-  }
-
-  if (userId) {
-    if (!isValidObjectId(userId)) {
-      throw new ApiError(400, "Invalid userId");
-    }
-
-    pipeline.push({
-      $match: {
-        owner: new mongoose.Types.ObjectId(userId),
-      },
-    });
-  }
-
-  pipeline.push({ $match: { isPublished: true } });
-
-  if (sortBy && sortType) {
-    pipeline.push({
-      $sort: {
-        [sortBy]: sortType === "asc" ? 1 : -1,
-      },
-    });
-  } else {
-    pipeline.push({ $sort: { createdAt: -1 } });
-  }
-
-  pipeline.push(
-    {
-      $lookup: {
-        from: "users",
-        localField: "owner",
-        foreignField: "_id",
-        as: "ownerDetails",
-        pipeline: [
-          {
-            $project: {
-              username: 1,
-              "avatar.url": 1,
-            },
-          },
-        ],
-      },
-    },
-    {
-      $unwind: "$ownerDetails",
-    }
-  );
-
-  const videoAggregate = Video.aggregate(pipeline);
-
-  const options = {
-    page: parseInt(page, 10),
-    limit: parseInt(limit, 10),
+  // match the qury condition for both title and description
+  const matchCondition = {
+    $or: [
+      { title: { $regex: query, $options: "i" } },
+      { description: { $regex: query, $options: "i" } },
+    ],
   };
 
-  const video = await Video.aggregatePaginate(videoAggregate, options);
+  //  sets owner property of matchCondition to userId
+  if (userId) {
+    (matchCondition.owner = new mongoose.Types.ObjectId(userId)),
+      (matchCondition.isPublished = true);
+  }
 
-  return res
-    .status(200)
-    .json(new apiResponse(200, video, "Videos fetched successfully"));
+  // video.aggregate pipeline for matchingCondition and looking up in users collection
+  let videoAggregate;
+  try {
+    // dont use await b/c : - Using await with Video.aggregate([...]) would execute the aggregation pipeline immediately, preventing aggregatePaginate from modifying the pipeline for pagination. By not using await, you pass the unexecuted aggregation object to aggregatePaginate, allowing it to append additional stages and handle pagination correctly.
+    videoAggregate = Video.aggregate([
+      {
+        $match: matchCondition,
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "owner",
+          foreignField: "_id",
+          as: "owner",
+          pipeline: [
+            {
+              $project: {
+                _id: 1,
+                username: 1,
+                email: 1,
+                avatar: 1,
+              },
+            },
+          ],
+        },
+      },
+      {
+        $addFields: {
+          owner: {
+            $first: "$owner",
+          },
+        },
+      },
+      {
+        $sort: {
+          [sortBy || "createdAt"]: sortType === "desc" ? -1 : 1,
+        },
+      },
+    ]);
+  } catch (err) {
+    console.error("Error in aggregation:", err);
+    throw new apiError(
+      500,
+      err.message || "Internal server error in video aggregate"
+    );
+  }
+
+  // options for aggregatePaginate
+  const options = {
+    page: parseInt(page),
+    limit: parseInt(limit),
+    customLabels: {
+      totalDocs: "totalVideos",
+      docs: "videos",
+    },
+  };
+
+  // video.aggregatePaginate for pagination
+  Video.aggregatePaginate(videoAggregate, options).then((result) => {
+    try {
+      res
+        .status(200)
+        .json(
+          new apiResponse(
+            200,
+            result,
+            result.totalVideos === 0
+              ? "No video found"
+              : "videos fetched successfully"
+          )
+        );
+    } catch (error) {
+      console.error("Error in aggregatePaginate:", error);
+      throw new apiError(
+        500,
+        error.message || "Internal server error in video aggregatePaginate"
+      );
+    }
+  });
 });
 
 export const publishAVideo = asyncHandler(async (req, res) => {
@@ -273,7 +303,7 @@ export const updateVideo = asyncHandler(async (req, res) => {
   }
 
   if (!(title && description)) {
-    throw new apiError(400, "fields are required");
+    throw new apiError(400, "Title and Description are required");
   }
 
   //   find old video details and retun only thumbnail object
@@ -359,8 +389,8 @@ export const deleteVideo = asyncHandler(async (req, res) => {
     throw new apiError(400, "Failed to delete the video please try again");
   }
 
-  await deleteFromCloudinary(video.thumbnail.public_id); // video model has thumbnail public_id stored in it->check videoModel
-  await deleteFromCloudinary(video.videoFile.public_id, "video"); // specify video while deleting video
+  await deleteFromCloudinary(video.thumbnail.public_id);
+  await deleteFromCloudinary(video.videoFile.public_id, "video");
 
   // delete video likes
   await Like.deleteMany({
