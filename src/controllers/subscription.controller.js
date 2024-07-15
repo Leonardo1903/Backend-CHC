@@ -1,4 +1,5 @@
 import asyncHandler from "../utils/asyncHandler.js";
+import mongoose, { isValidObjectId } from "mongoose";
 import apiError from "../utils/apiError.js";
 import apiResponse from "../utils/apiResponse.js";
 import { Subscription } from "../models/subscription.models.js";
@@ -10,6 +11,7 @@ export const toggleSubscription = asyncHandler(async (req, res) => {
   if (!isValidObjectId(channelId)) {
     throw new apiError(401, "Invalid channel id");
   }
+
   const subscriberId = req.user?._id;
   if (!subscriberId) {
     throw new apiError(401, "Invalid User");
@@ -55,12 +57,10 @@ export const getUserChannelSubscribers = asyncHandler(async (req, res) => {
     throw new apiError(401, "invalid channel Id");
   }
 
-  channelId = new mongoose.Types.ObjectId(channelId);
-
-  const subscribers = await Subscription.aggregate([
+  const channelSubscriber = await Subscription.aggregate([
     {
       $match: {
-        channel: channelId,
+        channel: new mongoose.Types.ObjectId(subscriberId),
       },
     },
     {
@@ -71,68 +71,48 @@ export const getUserChannelSubscribers = asyncHandler(async (req, res) => {
         as: "subscriber",
         pipeline: [
           {
-            $lookup: {
-              from: "subscriptions",
-              localField: "_id",
-              foreignField: "channel",
-              as: "subscribedToSubscriber",
-            },
-          },
-          {
-            $addFields: {
-              subscribedToSubscriber: {
-                $cond: {
-                  if: {
-                    $in: [channelId, "$subscribedToSubscriber.subscriber"],
-                  },
-                  then: true,
-                  else: false,
-                },
-              },
-              subscribersCount: {
-                $size: "$subscribedToSubscriber",
-              },
+            $project: {
+              username: 1,
+              fullname: 1,
+              avatar: 1,
             },
           },
         ],
       },
     },
     {
-      $unwind: "$subscriber",
-    },
-    {
-      $project: {
-        _id: 0,
+      $addFields: {
         subscriber: {
-          _id: 1,
-          username: 1,
-          fullName: 1,
-          "avatar.url": 1,
-          subscribedToSubscriber: 1,
-          subscribersCount: 1,
+          $first: "$subscriber",
         },
       },
     },
   ]);
 
+  const subscribersList = channelSubscriber.map((item) => item.subscriber);
   return res
     .status(200)
     .json(
-      new apiResponse(200, subscribers, "subscribers fetched successfully")
+      new apiResponse(
+        200,
+        subscribersList,
+        "subscriberlist fetched successfully"
+      )
     );
 });
 
 // controller to return channel list to which user has subscribed
 export const getSubscribedChannels = asyncHandler(async (req, res) => {
   const { channelId } = req.params;
+
   if (!isValidObjectId(channelId)) {
     throw new apiError(401, "Invalid channel");
   }
 
-  const subscribedChannels = await Subscription.aggregate([
+  const channelSubscribedTo = await Subscription.aggregate([
     {
       $match: {
-        subscriber: new mongoose.Types.ObjectId(subscriberId),
+        subscriber: new mongoose.Types.ObjectId(channelId),
       },
     },
     {
@@ -140,60 +120,35 @@ export const getSubscribedChannels = asyncHandler(async (req, res) => {
         from: "users",
         localField: "channel",
         foreignField: "_id",
-        as: "subscribedChannel",
+        as: "subscribedto",
         pipeline: [
           {
-            $lookup: {
-              from: "videos",
-              localField: "_id",
-              foreignField: "owner",
-              as: "videos",
-            },
-          },
-          {
-            $addFields: {
-              latestVideo: {
-                $last: "$videos",
-              },
+            $project: {
+              username: 1,
+              fullname: 1,
+              avatar: 1,
             },
           },
         ],
       },
     },
     {
-      $unwind: "$subscribedChannel",
-    },
-    {
       $project: {
-        _id: 0,
-        subscribedChannel: {
-          _id: 1,
-          username: 1,
-          fullName: 1,
-          "avatar.url": 1,
-          latestVideo: {
-            _id: 1,
-            "videoFile.url": 1,
-            "thumbnail.url": 1,
-            owner: 1,
-            title: 1,
-            description: 1,
-            duration: 1,
-            createdAt: 1,
-            views: 1,
-          },
+        subscribedto: {
+          $first: "$subscribedto",
         },
       },
     },
   ]);
 
+  const subscribedToList = channelSubscribedTo.map((item) => item.subscribedto);
   return res
     .status(200)
     .json(
       new apiResponse(
         200,
-        subscribedChannels,
-        "subscribed channels fetched successfully"
+        subscribedToList,
+        "subscribedto list fetched succesfully"
       )
     );
 });
