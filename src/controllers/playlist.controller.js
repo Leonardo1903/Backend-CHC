@@ -176,12 +176,12 @@ export const getPlaylistById = asyncHandler(async (req, res) => {
   ]);
 
   if (!playlistVideos) {
-    throw new apiError(404, "Error Fetching User Playlists");
+    throw new apiError(404, "Error Fetching Playlists");
   }
   return res
     .status(200)
     .json(
-      new apiResponse(200, playlistVideos[0], "playlist fetched successfully")
+      new apiResponse(200, playlistVideos[0], "Playlist fetched successfully")
     );
   // check if playlist were found
 });
@@ -192,13 +192,18 @@ export const addVideoToPlaylist = asyncHandler(async (req, res) => {
 
   // check if playlistId and videoId are valid MongoDB ObjectIds
   if (!isValidObjectId(playlistId) || !isValidObjectId(videoId)) {
-    throw new apiError(400, "Invalid playlist id or video id");
+    throw new ApiError(400, "Invalid playlist id or video id");
   }
 
   // check if playlist exists
   const playlist = await Playlist.findById(playlistId);
   if (!playlist) {
-    throw new apiError(404, "Playlist not found");
+    throw new ApiError(404, "Playlist not found");
+  }
+  // check if user is authenticated
+  const user = await User.findById(req.user?._id);
+  if (!user) {
+    throw new apiError(404, "User not found");
   }
 
   // check if video exists
@@ -208,41 +213,29 @@ export const addVideoToPlaylist = asyncHandler(async (req, res) => {
   }
 
   // check if user is the owner of the playlist
-  if (
-    (playlist.owner?.toString() && video.owner.toString()) !==
-    req.user?._id.toString()
-  ) {
-    throw new apiError(400, "only owner can add video to thier playlist");
+  if (user._id.toString() !== playlist.owner.toString()) {
+    throw new apiError(403, "Unauthorized access");
   }
 
   // check if video is already in playlist
-  if (playlist.video.includes(videoId)) {
+  if (playlist.videos.includes(videoId)) {
     throw new apiError(400, "Video already in playlist");
   }
 
   // add video to playlist
-  const updatedPlaylist = await Playlist.findByIdAndUpdate(
-    playlist?._id,
+  const videoAdd = await Playlist.findByIdAndUpdate(
+    playlistId,
     {
-      $addToSet: {
-        videos: videoId,
-      },
+      $push: { videos: videoId },
     },
     { new: true }
   );
 
-  if (!updatedPlaylist) {
-    throw new apiError(400, "failed to add video to playlist please try again");
-  }
-
+  // return response
   return res
     .status(200)
     .json(
-      new apiResponse(
-        200,
-        updatedPlaylist,
-        "Added video to playlist successfully"
-      )
+      new apiResponse(200, videoAdd, "Video added to playlist successfully")
     );
 });
 
@@ -276,7 +269,7 @@ export const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
   }
 
   // check if video is in playlist
-  if (!playlist.video.includes(videoId)) {
+  if (!playlist.videos.includes(videoId)) {
     throw new apiError(400, "Video not in playlist");
   }
 
@@ -315,6 +308,12 @@ export const deletePlaylist = asyncHandler(async (req, res) => {
   const playlist = await Playlist.findById(playlistId);
   if (!playlist) {
     throw new apiError(404, "Playlist not found");
+  }
+
+  // check if user is authenticated
+  const user = await User.findById(req.user?._id);
+  if (!user) {
+    throw new apiError(404, "User not found");
   }
 
   // check if user is authorized to delete playlist
