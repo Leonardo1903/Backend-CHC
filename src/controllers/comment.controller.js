@@ -127,7 +127,7 @@ export const addComment = asyncHandler(async (req, res) => {
   // return success response
   return res
     .status(201)
-    .json(apiResponse(201, "Comment added successfully", newComment));
+    .json(new apiResponse(201, "Comment added successfully", comment));
 });
 
 export const updateComment = asyncHandler(async (req, res) => {
@@ -171,7 +171,7 @@ export const updateComment = asyncHandler(async (req, res) => {
   // return success response
   return res
     .status(200)
-    .json(apiResponse(200, "Comment updated successfully", updatedComment));
+    .json(new apiResponse(200, "Comment updated successfully", updatedComment));
 });
 
 export const deleteComment = asyncHandler(async (req, res) => {
@@ -205,5 +205,5 @@ export const deleteComment = asyncHandler(async (req, res) => {
   // return success response
   return res
     .status(200)
-    .json(apiResponse(200, "Comment deleted successfully", deletedComment));
+    .json(new apiResponse(200, "Comment deleted successfully", deletedComment));
 });
